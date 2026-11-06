@@ -26,6 +26,7 @@ function getClient(): GoogleGenAI {
     client = new GoogleGenAI({
       apiKey,
       httpOptions: {
+        timeout: 22000,
         headers: {
           'User-Agent': 'aistudio-build',
         },
@@ -36,47 +37,27 @@ function getClient(): GoogleGenAI {
 }
 
 async function callGeminiWithRetry(
-  params: Record<string, unknown>,
-  maxRetries = 2
+  params: Record<string, unknown>
 ): Promise<any> {
   const ai = getClient();
-  const modelsToTry = [
-    params.model,
-    'gemini-flash-latest',
-    'gemini-3.1-flash-lite',
-  ].filter(Boolean) as string[];
+  const modelsToTry = [params.model, 'gemini-flash-latest'].filter(
+    Boolean
+  ) as string[];
 
   const uniqueModels = Array.from(new Set(modelsToTry));
 
   let lastError: unknown;
   for (const model of uniqueModels) {
-    let attempt = 0;
-    while (attempt < maxRetries) {
-      try {
-        return await ai.models.generateContent({
-          ...params,
-          model,
-        } as any);
-      } catch (err: any) {
-        lastError = err;
-        attempt++;
-        const isTransient =
-          err?.status === 503 ||
-          err?.status === 429 ||
-          err?.message?.includes('503') ||
-          err?.message?.includes('429') ||
-          err?.message?.includes('high demand') ||
-          err?.message?.includes('UNAVAILABLE');
-
-        if (isTransient && attempt < maxRetries) {
-          console.warn(
-            `[Gemini API] Transient error with model ${model} (attempt ${attempt}/${maxRetries}). Retrying...`
-          );
-          await new Promise((resolve) => setTimeout(resolve, 800 * attempt));
-          continue;
-        }
-        break;
-      }
+    try {
+      return await ai.models.generateContent({
+        ...params,
+        model,
+      } as any);
+    } catch (err: any) {
+      lastError = err;
+      console.warn(
+        `[Gemini API] Request failed with model ${model}: ${err?.message || err}`
+      );
     }
   }
   throw lastError;
@@ -138,6 +119,9 @@ Return your evaluation strictly in the requested JSON structure.`;
     },
     config: {
       systemInstruction,
+      thinkingConfig: {
+        thinkingLevel: 'minimal',
+      },
       responseMimeType: 'application/json',
       responseSchema: {
         type: Type.OBJECT,
