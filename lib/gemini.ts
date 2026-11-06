@@ -48,6 +48,26 @@ function isThinkingLevelError(err: any): boolean {
 
 const GEMINI_BUDGET_MS = 42000;
 const MAX_SINGLE_CALL_MS = 40000;
+const MODEL_COOLDOWN_MS = 10 * 60 * 1000;
+
+const PREFERRED_MODELS = [
+  'gemini-3.5-flash',
+  'gemini-3.6-flash',
+  'gemini-3.1-flash-lite',
+];
+
+const modelCooldowns = new Map<string, number>();
+
+function isModelUnavailableError(err: any): boolean {
+  const message = String(err?.message || err || '').toLowerCase();
+  return (
+    message.includes('resource_exhausted') ||
+    message.includes('quota') ||
+    message.includes('429') ||
+    message.includes('not_found') ||
+    message.includes('no longer available')
+  );
+}
 
 async function generateWithTimeout(
   ai: GoogleGenAI,
@@ -78,7 +98,7 @@ async function callGeminiWithRetry(
 ): Promise<any> {
   const ai = getClient();
   const deadline = Date.now() + GEMINI_BUDGET_MS;
-  const modelsToTry = [params.model, 'gemini-flash-latest'].filter(
+  const modelsToTry = [...PREFERRED_MODELS, params.model].filter(
     Boolean
   ) as string[];
 
@@ -87,6 +107,7 @@ async function callGeminiWithRetry(
 
   let lastError: unknown;
   for (const model of uniqueModels) {
+    if ((modelCooldowns.get(model) || 0) > Date.now()) continue;
     const remaining = deadline - Date.now();
     if (remaining < 5000) break;
     const timeout = Math.min(remaining, MAX_SINGLE_CALL_MS);
@@ -101,6 +122,9 @@ async function callGeminiWithRetry(
       );
     } catch (err: any) {
       lastError = err;
+      if (isModelUnavailableError(err)) {
+        modelCooldowns.set(model, Date.now() + MODEL_COOLDOWN_MS);
+      }
       console.warn(
         `[Gemini API] Request failed with model ${model}: ${err?.message || err}`
       );
@@ -118,6 +142,9 @@ async function callGeminiWithRetry(
           );
         } catch (retryErr: any) {
           lastError = retryErr;
+          if (isModelUnavailableError(retryErr)) {
+            modelCooldowns.set(model, Date.now() + MODEL_COOLDOWN_MS);
+          }
           console.warn(
             `[Gemini API] Retry without thinkingConfig failed with model ${model}: ${retryErr?.message || retryErr}`
           );

@@ -26,7 +26,7 @@ Open http://localhost:3000.
 | Variable | Required | Description |
 |---|---|---|
 | `GEMINI_API_KEY` | yes | Gemini API key (server-side only) |
-| `GEMINI_VISION_MODEL` | no | Vision model, default `gemini-3.8-flash` |
+| `GEMINI_VISION_MODEL` | no | Vision model, default `gemini-3.5-flash` |
 | `SUPABASE_URL` | no | Enables Supabase persistence when set with the service role key |
 | `SUPABASE_SERVICE_ROLE_KEY` | no | Server-only privileged key; never exposed to the browser |
 | `SUPABASE_ANON_KEY` | no | Reserved for client-side Supabase usage |
