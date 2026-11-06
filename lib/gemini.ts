@@ -26,7 +26,7 @@ function getClient(): GoogleGenAI {
     client = new GoogleGenAI({
       apiKey,
       httpOptions: {
-        timeout: 22000,
+        timeout: 45000,
         headers: {
           'User-Agent': 'aistudio-build',
         },
@@ -45,10 +45,38 @@ function isThinkingLevelError(err: any): boolean {
   );
 }
 
+const GEMINI_BUDGET_MS = 42000;
+const MAX_SINGLE_CALL_MS = 40000;
+
+async function generateWithTimeout(
+  ai: GoogleGenAI,
+  params: Record<string, unknown>,
+  model: string,
+  config: Record<string, unknown>,
+  timeoutMs: number
+): Promise<any> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await ai.models.generateContent({
+      ...params,
+      model,
+      config: {
+        ...config,
+        httpOptions: { timeout: timeoutMs },
+        abortSignal: controller.signal,
+      },
+    } as any);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function callGeminiWithRetry(
   params: Record<string, unknown>
 ): Promise<any> {
   const ai = getClient();
+  const deadline = Date.now() + GEMINI_BUDGET_MS;
   const modelsToTry = [params.model, 'gemini-flash-latest'].filter(
     Boolean
   ) as string[];
@@ -58,15 +86,18 @@ async function callGeminiWithRetry(
 
   let lastError: unknown;
   for (const model of uniqueModels) {
+    const remaining = deadline - Date.now();
+    if (remaining < 5000) break;
+    const timeout = Math.min(remaining, MAX_SINGLE_CALL_MS);
+
     try {
-      return await ai.models.generateContent({
-        ...params,
+      return await generateWithTimeout(
+        ai,
+        params,
         model,
-        config: {
-          ...baseConfig,
-          thinkingConfig: { thinkingLevel: 'low' },
-        },
-      } as any);
+        { ...baseConfig, thinkingConfig: { thinkingLevel: 'low' } },
+        timeout
+      );
     } catch (err: any) {
       lastError = err;
       console.warn(
@@ -74,12 +105,16 @@ async function callGeminiWithRetry(
       );
 
       if (isThinkingLevelError(err)) {
+        const retryRemaining = deadline - Date.now();
+        if (retryRemaining < 5000) break;
         try {
-          return await ai.models.generateContent({
-            ...params,
+          return await generateWithTimeout(
+            ai,
+            params,
             model,
-            config: { ...baseConfig, thinkingConfig: undefined },
-          } as any);
+            { ...baseConfig, thinkingConfig: undefined },
+            Math.min(retryRemaining, MAX_SINGLE_CALL_MS)
+          );
         } catch (retryErr: any) {
           lastError = retryErr;
           console.warn(
