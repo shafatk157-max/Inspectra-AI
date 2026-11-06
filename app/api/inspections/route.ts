@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { randomUUID } from 'crypto';
 import {
   ALLOWED_IMAGE_TYPES,
   MAX_FILE_SIZE_BYTES,
@@ -14,6 +15,7 @@ import type { ProductCategory } from '@/lib/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 export async function GET(request: Request) {
   try {
@@ -110,9 +112,7 @@ export async function POST(request: Request) {
       category,
     });
 
-    const inspectionId = `insp-${Date.now()}-${Math.random()
-      .toString(36)
-      .substring(2, 8)}`;
+    const inspectionId = randomUUID();
     const timestamp = new Date().toISOString();
 
     const record = await saveInspection({
