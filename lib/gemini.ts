@@ -36,6 +36,15 @@ function getClient(): GoogleGenAI {
   return client;
 }
 
+function isThinkingLevelError(err: any): boolean {
+  const message = String(err?.message || err || '').toLowerCase();
+  return (
+    message.includes('thinking level') ||
+    message.includes('thinking_level') ||
+    message.includes('thinkingconfig')
+  );
+}
+
 async function callGeminiWithRetry(
   params: Record<string, unknown>
 ): Promise<any> {
@@ -45,6 +54,7 @@ async function callGeminiWithRetry(
   ) as string[];
 
   const uniqueModels = Array.from(new Set(modelsToTry));
+  const baseConfig = (params.config as Record<string, unknown>) || {};
 
   let lastError: unknown;
   for (const model of uniqueModels) {
@@ -52,12 +62,31 @@ async function callGeminiWithRetry(
       return await ai.models.generateContent({
         ...params,
         model,
+        config: {
+          ...baseConfig,
+          thinkingConfig: { thinkingLevel: 'low' },
+        },
       } as any);
     } catch (err: any) {
       lastError = err;
       console.warn(
         `[Gemini API] Request failed with model ${model}: ${err?.message || err}`
       );
+
+      if (isThinkingLevelError(err)) {
+        try {
+          return await ai.models.generateContent({
+            ...params,
+            model,
+            config: { ...baseConfig, thinkingConfig: undefined },
+          } as any);
+        } catch (retryErr: any) {
+          lastError = retryErr;
+          console.warn(
+            `[Gemini API] Retry without thinkingConfig failed with model ${model}: ${retryErr?.message || retryErr}`
+          );
+        }
+      }
     }
   }
   throw lastError;
@@ -119,9 +148,6 @@ Return your evaluation strictly in the requested JSON structure.`;
     },
     config: {
       systemInstruction,
-      thinkingConfig: {
-        thinkingLevel: 'minimal',
-      },
       responseMimeType: 'application/json',
       responseSchema: {
         type: Type.OBJECT,
