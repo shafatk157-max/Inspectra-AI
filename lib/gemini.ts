@@ -27,6 +27,7 @@ function getClient(): GoogleGenAI {
       apiKey,
       httpOptions: {
         timeout: 45000,
+        retryOptions: { attempts: 1 },
         headers: {
           'User-Agent': 'aistudio-build',
         },
@@ -63,7 +64,7 @@ async function generateWithTimeout(
       model,
       config: {
         ...config,
-        httpOptions: { timeout: timeoutMs },
+        httpOptions: { timeout: timeoutMs, retryOptions: { attempts: 1 } },
         abortSignal: controller.signal,
       },
     } as any);
