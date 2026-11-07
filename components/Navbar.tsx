@@ -50,7 +50,7 @@ export function Navbar({ storageMode }: NavbarProps) {
                 </div>
                 <div>
                   <span className="text-lg font-bold tracking-tight text-slate-900 font-display block whitespace-nowrap">
-                    CertiScan AI
+                    Inspectra AI
                   </span>
                   <span className="text-[11px] text-slate-500 font-medium block -mt-0.5">
                     Visual Quality Inspection

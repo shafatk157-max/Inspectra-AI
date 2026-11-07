@@ -28,11 +28,11 @@ const jetBrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'AI Visual Quality Inspection',
+  title: 'Inspectra AI — Visual Quality Inspection',
   description:
     'Automated vision AI quality control inspection for manufacturing and workshop parts with defect detection and traceability.',
   openGraph: {
-    title: 'AI Visual Quality Inspection',
+    title: 'Inspectra AI — Visual Quality Inspection',
     description:
       'Automated vision AI quality control inspection for manufacturing and workshop parts with defect detection and traceability.',
     type: 'website',

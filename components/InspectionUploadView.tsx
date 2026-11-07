@@ -1,6 +1,11 @@
 'use client';
 
-import { useState, useRef, type DragEvent } from 'react';
+import {
+  useState,
+  useRef,
+  useEffect,
+  type DragEvent,
+} from 'react';
 import { useRouter } from 'next/navigation';
 import {
   UploadCloud,
@@ -14,6 +19,7 @@ import {
   Wrench,
   Package,
   Cpu,
+  Camera,
 } from 'lucide-react';
 import {
   ALLOWED_IMAGE_TYPES,
@@ -45,8 +51,117 @@ export function InspectionUploadView({
   const [validationError, setValidationError] = useState<string | null>(null);
   const [inspectionStep, setInspectionStep] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  const stopCamera = () => {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setIsCameraActive(false);
+  };
+
+  useEffect(() => {
+    return () => {
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isCameraActive && streamRef.current && videoRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch(() => undefined);
+    }
+  }, [isCameraActive]);
+
+  const startCamera = async () => {
+    setCameraError(null);
+    setValidationError(null);
+
+    if (
+      typeof navigator === 'undefined' ||
+      !navigator.mediaDevices?.getUserMedia
+    ) {
+      const message =
+        'Camera is not supported in this browser. Please upload a file instead.';
+      setCameraError(message);
+      setValidationError(message);
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
+        audio: false,
+      });
+      streamRef.current = stream;
+      setIsCameraActive(true);
+    } catch (err: any) {
+      const message =
+        err?.name === 'NotAllowedError'
+          ? 'Camera permission was denied. Allow camera access or upload a file instead.'
+          : err?.name === 'NotFoundError'
+            ? 'No camera was found on this device. Please upload a file instead.'
+            : 'Unable to access the camera. Please upload a file instead.';
+      setCameraError(message);
+      setValidationError(message);
+      showNotification('error', message);
+    }
+  };
+
+  const capturePhoto = () => {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth || !video.videoHeight) {
+      return;
+    }
+
+    const maxDimension = 1920;
+    let width = video.videoWidth;
+    let height = video.videoHeight;
+    if (Math.max(width, height) > maxDimension) {
+      const scale = maxDimension / Math.max(width, height);
+      width = Math.round(width * scale);
+      height = Math.round(height * scale);
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    if (!context) {
+      setCameraError('Could not capture the photo. Please try again.');
+      return;
+    }
+    context.drawImage(video, 0, 0, width, height);
+
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          setCameraError('Could not capture the photo. Please try again.');
+          return;
+        }
+        const file = new File(
+          [blob],
+          `camera-capture-${Date.now()}.jpg`,
+          { type: 'image/jpeg' }
+        );
+        stopCamera();
+        handleFileChange(file);
+      },
+      'image/jpeg',
+      0.9
+    );
+  };
 
   const categories: { label: ProductCategory; icon: any }[] = [
     { label: 'Auto Detect / General', icon: Sparkles },
@@ -158,8 +273,8 @@ export function InspectionUploadView({
           New Quality Inspection
         </h1>
         <p className="text-sm text-slate-500 mt-1">
-          Upload a clear photograph of a single manufactured item or component
-          to run automated defect screening.
+          Upload or capture a clear photograph of a single manufactured item or
+          component to run automated defect screening.
         </p>
       </div>
 
@@ -258,7 +373,7 @@ export function InspectionUploadView({
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="block text-xs font-bold text-slate-900 uppercase tracking-wider font-display">
-              Step 2: Upload Product Photograph
+              Step 2: Upload or Capture Product Photograph
             </label>
             <span className="text-[11px] text-slate-500">
               JPG, PNG, or WEBP up to 4 MB
@@ -304,6 +419,14 @@ export function InspectionUploadView({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
+                    onClick={startCamera}
+                    className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-semibold px-2 py-1 hover:bg-blue-50 rounded"
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                    Use Camera
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => fileInputRef.current?.click()}
                     className="text-xs text-blue-600 hover:text-blue-700 font-semibold px-2 py-1 hover:bg-blue-50 rounded"
                   >
@@ -345,12 +468,29 @@ export function InspectionUploadView({
                 Position the camera perpendicular to the defect area with
                 clear, uniform lighting.
               </p>
-              <button
-                type="button"
-                className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg shadow-xs"
-              >
-                Select File from Computer
-              </button>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    fileInputRef.current?.click();
+                  }}
+                  className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg shadow-xs"
+                >
+                  Select File from Computer
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    startCamera();
+                  }}
+                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm"
+                >
+                  <Camera className="w-4 h-4" />
+                  Use Camera
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -412,6 +552,66 @@ export function InspectionUploadView({
           </button>
         </div>
       </div>
+
+      {isCameraActive && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
+              <div className="flex items-center gap-2 text-sm font-bold text-slate-900 font-display">
+                <Camera className="w-4 h-4 text-blue-600" />
+                Capture Product Photo
+              </div>
+              <button
+                type="button"
+                onClick={stopCamera}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded"
+                aria-label="Close camera"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="bg-black">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full max-h-[60vh] object-contain"
+              />
+            </div>
+
+            {cameraError && (
+              <div className="px-4 py-2 text-xs text-rose-700 bg-rose-50 border-t border-rose-100">
+                {cameraError}
+              </div>
+            )}
+
+            <div className="p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <p className="text-[11px] text-slate-500">
+                Center the item in the frame with clear, even lighting.
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={stopCamera}
+                  className="px-4 py-2 text-xs font-medium text-slate-600 hover:text-slate-900"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={capturePhoto}
+                  className="flex items-center gap-2 px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm"
+                >
+                  <Camera className="w-4 h-4" />
+                  Capture Photo
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

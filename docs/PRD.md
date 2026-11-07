@@ -1,6 +1,6 @@
 # Product Requirements Document (PRD)
 
-## AI Visual Quality Inspection — CertiScan AI
+## Inspectra AI — Visual Quality Inspection
 
 | Field | Value |
 |---|---|
@@ -14,7 +14,7 @@
 
 ## 1. Executive summary
 
-CertiScan AI is a web application for automated, first-pass visual quality inspection of
+Inspectra AI is a web application for automated, first-pass visual quality inspection of
 manufactured and workshop parts. A user uploads a product photograph or selects a preset sample,
 optionally chooses a product category, and receives a structured inspection verdict:
 **PASS**, **FAIL**, or **NEEDS_REVIEW**. Results include defect cards, severity, an estimated
